@@ -1,0 +1,541 @@
+---
+title: "R IMM Generator Notebook"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+```{r}
+library(DBI)
+library(RMariaDB)
+library(tidyverse)
+# install.package("devtools")
+# devtools::install_github("gadenbuie/lorem")
+library(lorem)
+library(uuid)
+library (lubridate)
+
+library(ggplot2)
+library(ggthemes)
+library(maps)
+library(stringi) # used to generate BE#'s
+library(ggiraph)
+
+```
+
+
+```{r}
+con <- dbConnect(RMariaDB::MariaDB(), dbname="default_1", user="coker", password="coker", host="localhost", group="my-db")
+
+dbListTables(con)
+# disconnect from DataBase
+dbDisconnect(con)
+```
+
+```{r General Parameters}
+N <- 50 # PIRs
+NR <- 400 # number of RFCs to generate 
+N_Users <- 100
+N_Groups <- 7
+NCR <- 400 # CRs
+
+CLASSIFICATION <- c("Sample U", "Sample S", "Sample TS")
+RELEASABILITY <- c("//", "// NOFORN", "// REL FEYES", "// REL ROK", "// REL NATO" )
+CCMD_List <- c("SOCOM", "SOUTHCOM","CENTCOM","INDOPACOM","STRATCOM",
+               "NORTHCOM","EUCOM","AFRICOM","CYBERCOM","TRANSCOM")
+CCMD_Comp <- c("AF","NAVY","ARMY",
+               "SOF","SPACE","MARINES")
+
+
+```
+
+```{r Generate PIRs}
+# generate N paragraphs averaging PW words each
+# N <- 50 # Number of PIRs to generate
+PW <- 20 # number of words in a paragaph for ipsum lorem
+PIR_Comments <- ipsum(N,avg_words_per_sentence = PW)
+TW <- 5 # number of words for a single sentence item
+PIR_Title <- replicate(N, lorem::ipsum_words(TW))
+PIR_GUID <- UUIDgenerate(use.time=FALSE,n=N)
+EW <- 10 # number of words
+EEI <- replicate(N, lorem::ipsum_words(EW))
+NW <- 4 # number of words
+NIPF <- replicate(N,lorem::ipsum_words(NW))
+
+
+#### Need to add CMD to the PIRs
+PIR_CCMD <- sample(CCMD_List,N,replace=TRUE)
+
+# Phasing 
+Phase <- c(0,1,2,4,5)
+PIR_Phase <- rep(Phase[1],N)
+
+# generate dates for records
+start_date <- as.POSIXct("2015-01-15")
+PIR_Date <- start_date
+for(i in 1:N) PIR_Date[i] <- start_date + hours(i*5)
+
+PIR <- data.frame(
+  GUID = PIR_GUID,
+  TYPE = "PIR",
+# NAME = paste0(PIR_CCMD,": ", "PIR",seq(from=11,to=N+10,by=1)),
+  NAME = paste0("PIR",seq(from=11,to=N+10,by=1)),
+  Phase = PIR_Phase,
+  CCMD = PIR_CCMD,
+  Date_Time = PIR_Date,
+  Title = PIR_Title,
+  Description = PIR_Comments,
+  EEI = EEI,
+  NIPF = NIPF,
+  Classification = sample(CLASSIFICATION, N, replace=TRUE),
+  Releasability = sample(RELEASABILITY, N, replace=TRUE)
+)
+
+con <- dbConnect(RMariaDB::MariaDB(), dbname="default_1", user="coker", password="coker", host="localhost", group="my-db")
+dbWriteTable(con,"PIR",PIR, overwrite=TRUE)
+dbDisconnect(con)
+
+```
+
+
+```{r Generate RFC}
+#NR <- 400 # number of RFCs to generate 
+#N_Users <- 100
+#N_Groups <- 7
+
+# Random list of KIQ GUIDs
+NK <- 50
+KIQ_GUID <- UUIDgenerate(use.time=FALSE,n=NK)
+
+# Generate a list of dates to chose from randomly
+start_date <- as.POSIXct("2016-03-15")
+R_Date <- start_date
+for(i in 1:NR) R_Date[i] <- start_date + hours(i*5)
+
+R_Type <- c("AD-HOC", "STANDING")
+RFC_TL <- c("ROUTINE", "IMMEDIATE","UNKNOWN")
+WF_List <- c("DRAFT","PENDING","APPROVED","REJECTED","PAUSED")
+Priority <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+RFC_GUID <- UUIDgenerate(use.time=FALSE,n=NR)
+Created_Date_Time <- R_Date[as.integer(runif(NR,1,NR+1))]
+Created_By <- sample.int(N_Users, NR, replace=TRUE) # user ID, integer
+LastUpdated_Date_Time <- Created_Date_Time + hours(as.integer( runif(NR,0,80)))
+LastUpdated_By <- sample.int(N_Users, NR, replace=TRUE) # user ID, integer
+Workflow_Status <- sample(WF_List,NR,replace=TRUE) 
+RFC_Title <- replicate(NR, lorem::ipsum_words(TW))
+RFC_Comments <- ipsum(NR,avg_words_per_sentence = PW)
+# build linkage to PIR
+RFC_PIR_GUID <- sample(PIR_GUID,NR,replace=TRUE) # Randomly select one of the PIRs
+# get the following from the associated PIR
+pirguid_index <- match(RFC_PIR_GUID,PIR$GUID)
+
+# Make sure CCMD Matches PIR 
+#CCMD <- sample(CCMD_List,NR,replace=TRUE)
+CCMD <- PIR$CCMD[pirguid_index]
+
+CCMD_Component <- sample(CCMD_Comp,NR,replace=TRUE) 
+Request_Type <- sample(R_Type,NR,replace=TRUE) # AD-HOC, STANDING
+RFC_Timeline <- sample(RFC_TL,NR,replace=TRUE) # ROUTINE, IMMEDIATE
+RFC_Begin <- sample(R_Date,NR, replace=TRUE) 
+RFC_End <- RFC_Begin + days(as.integer( runif(NR,30,120)))
+RFC_LTV <- RFC_End + days(as.integer( runif(NR,10,30)))
+RFC_Comments <- ipsum(NR,avg_words_per_sentence = PW)
+RFC_rand <- ipsum(NR,avg_words_per_sentence = PW)
+pRFC_Research <- ipsum(NR,avg_words_per_sentence = 10) # Links
+RFC_rand <- ipsum(NR,avg_words_per_sentence = PW)
+rPOC <- sample.int(N_Users, NR, replace=TRUE)  # user ID, integer
+KIQ_ID <- sample(KIQ_GUID, NR, replace=TRUE) 
+groupID <- sample.int(N_Groups, NR, replace=TRUE) # integer
+MIDB_ID <- do.call(paste0, c("BE", Map(stri_rand_strings, n=NR, length=c(5, 4, 1),
+            pattern = c('[A-Z]', '[0-9]', '[A-Z]'))))
+
+# Create Coordinates for each RFC 
+min_lat <- 30
+max_lat <- 45
+min_lon <- -140
+max_lon <- -120
+RFC_Lat <- runif(NR,min_lat,max_lat)
+RFC_Lon <- runif(NR,min_lon,max_lon)
+
+# Create Coordinates for each RFC w/ CCMD Geospatial Bias
+# PACOM
+INDOPACOM_min_lat <- -65
+INDOPACOM_max_lat <- 65
+INDOPACOM_min_lon <- -170
+INDOPACOM_max_lon <- -140
+
+#CENTCOM
+CENTCOM_min_lat <- 10
+CENTCOM_max_lat <- 40
+CENTCOM_min_lon <- 30
+CENTCOM_max_lon <- 70
+
+# NORTHCOM
+NORTHCOM_min_lat <- 20
+NORTHCOM_max_lat <- 65
+NORTHCOM_min_lon <- -160
+NORTHCOM_max_lon <- -60
+
+# SOUTHCOM
+SOUTHCOM_min_lat <- -70
+SOUTHCOM_max_lat <- 20
+SOUTHCOM_min_lon <- -90
+SOUTHCOM_max_lon <- -30
+
+#EUCOM
+EUCOM_min_lat <- 40
+EUCOM_max_lat <- 70
+EUCOM_min_lon <- -10
+EUCOM_max_lon <- 60
+
+# AFRICOM
+AFRICOM_min_lat <- -30
+AFRICOM_max_lat <- 30
+AFRICOM_min_lon <- -10
+AFRICOM_max_lon <- 40
+
+# CYBERCOM - Global 
+CYBERCOM_min_lat <- -65
+CYBERCOM_max_lat <- 65
+CYBERCOM_min_lon <- -170
+CYBERCOM_max_lon <- 40
+
+# SOCOM - GLOBAL
+SOCOM_min_lat <- -65
+SOCOM_max_lat <- 65
+SOCOM_min_lon <- -170
+SOCOM_max_lon <- -140
+
+# TRANSCOM - GLOBAL
+TRANSCOM_min_lat <- -65
+TRANSCOM_max_lat <- 65
+TRANSCOM_min_lon <- -170
+TRANSCOM_max_lon <- 170
+
+# STRATCOM
+STRATCOM_min_lat <- 0
+STRATCOM_max_lat <- 65
+STRATCOM_min_lon <- -170
+STRATCOM_max_lon <- 170
+
+
+RFC <- data.frame(
+  GUID = RFC_GUID,
+  TYPE = "RFC",
+  NAME = paste0("RFC",seq(1:NR)),
+  Created_Date_Time = Created_Date_Time,
+  Created_By = Created_By, # user ID, integer
+  LastUpdated_Date_Time = LastUpdated_Date_Time,
+  LastUpdated_By = LastUpdated_By, # user ID, integer
+  Workflow_Status = Workflow_Status,
+  Title = RFC_Title,
+  Description = RFC_Comments,
+  PIR = RFC_PIR_GUID,
+  Combatant_Command = CCMD,
+  Combatant_Command_Component = CCMD_Component,
+  requestType = Request_Type, # AD-HOC, STANDING
+  collectionTimeline = RFC_Timeline, # ROUTINE, IMMEDIATE
+  collectionStartDate = RFC_Begin,
+  collectionStopDate = RFC_End,
+  collectionLastTimeofValue = RFC_LTV,
+  background = RFC_Comments,
+  justification = RFC_rand,
+  previousCollectionResearch = pRFC_Research, # Links
+  summary = RFC_rand,
+  responsiblePointofContactId = rPOC, # User ID, integer
+  keyIntelligenceQuestionId = KIQ_ID, # GUID
+  groupId = groupID, # integer
+  TargetID = MIDB_ID,
+  lon = RFC_Lon,
+  lat = RFC_Lat,
+  Priority = sample(Priority, NR, replace=TRUE),
+  Classification = PIR$Classification[pirguid_index],
+  Releasability = PIR$Releasability[pirguid_index]
+)
+
+#  c("SOCOM", "SOUTHCOM","CENTCOM","INDOPACOM","STRATCOM",                "NORTHCOM","EUCOM","AFRICOM","CYBERCOM","TRANSCOM")
+# RFC_Lat <- runif(NR,min_lat,max_lat)
+# RFC_Lon <- runif(NR,min_lon,max_lon)
+RFC <- RFC %>% mutate(lon = case_when(
+  Combatant_Command == "SOCOM" ~ runif(NR,SOCOM_min_lon,SOCOM_max_lon), 
+  Combatant_Command == "SOUTHCOM" ~ runif(NR,SOUTHCOM_min_lon,SOUTHCOM_max_lon), 
+  Combatant_Command == "CENTCOM" ~ runif(NR,CENTCOM_min_lon,CENTCOM_max_lon), 
+  Combatant_Command == "INDOPACOM" ~ runif(NR,INDOPACOM_min_lon,INDOPACOM_max_lon), 
+  Combatant_Command == "STRATCOM" ~ runif(NR,STRATCOM_min_lon,STRATCOM_max_lon), 
+  Combatant_Command == "NORTHCOM" ~ runif(NR,NORTHCOM_min_lon,NORTHCOM_max_lon), 
+  Combatant_Command == "EUCOM" ~ runif(NR,EUCOM_min_lon,EUCOM_max_lon), 
+  Combatant_Command == "AFRICOM" ~ runif(NR,AFRICOM_min_lon,AFRICOM_max_lon), 
+  Combatant_Command == "CYBERCOM" ~ runif(NR,CYBERCOM_min_lon,CYBERCOM_max_lon), 
+  Combatant_Command == "TRANSCOM" ~ runif(NR,TRANSCOM_min_lon,TRANSCOM_max_lon) 
+)
+)
+
+RFC <- RFC %>% mutate(lat = case_when(
+  Combatant_Command == "SOCOM" ~ runif(NR,SOCOM_min_lat,SOCOM_max_lat), 
+  Combatant_Command == "SOUTHCOM" ~ runif(NR,SOUTHCOM_min_lat,SOUTHCOM_max_lat), 
+  Combatant_Command == "CENTCOM" ~ runif(NR,CENTCOM_min_lat,CENTCOM_max_lat), 
+  Combatant_Command == "INDOPACOM" ~ runif(NR,INDOPACOM_min_lat,INDOPACOM_max_lat), 
+  Combatant_Command == "STRATCOM" ~ runif(NR,STRATCOM_min_lat,STRATCOM_max_lat), 
+  Combatant_Command == "NORTHCOM" ~ runif(NR,NORTHCOM_min_lat,NORTHCOM_max_lat), 
+  Combatant_Command == "EUCOM" ~ runif(NR,EUCOM_min_lat,EUCOM_max_lat), 
+  Combatant_Command == "AFRICOM" ~ runif(NR,AFRICOM_min_lat,AFRICOM_max_lat), 
+  Combatant_Command == "CYBERCOM" ~ runif(NR,CYBERCOM_min_lat,CYBERCOM_max_lat), 
+  Combatant_Command == "TRANSCOM" ~ runif(NR,TRANSCOM_min_lat,TRANSCOM_max_lat)
+)
+)
+
+usa <- map_data("world")
+
+ggplot() + 
+  geom_map(data=usa,map=usa, aes(x=long,y=lat,map_id=region), fill="orange",color="black") +
+  geom_point(data=RFC, aes(x=lon,y=lat), color="red", size=1)
+
+con <- dbConnect(RMariaDB::MariaDB(), dbname="default_1", user="coker", password="coker", host="localhost", group="my-db")
+dbWriteTable(con,"rfc",RFC,overwrite=TRUE)
+dbDisconnect(con)
+
+
+```
+
+
+
+```{r Generate GEOINT CR}
+
+#NCR <- 1000
+CR_List <- c("MTI","Surveillance","Reconnaissance")
+
+CR_GUID <- UUIDgenerate(use.time=FALSE,n=NCR)
+Created_Date_Time <- sample(R_Date, NCR, replace=TRUE) 
+Created_By <- sample.int(N_Users,NCR, replace=TRUE) # user ID, integer
+LastUpdated_Date_Time <- Created_Date_Time + hours(as.integer( runif(1,0,80)))
+LastUpdated_By <- sample.int(N_Users,NCR, replace=TRUE) # user ID, integer
+Workflow_Status <- sample(WF_List, NCR, replace= TRUE) 
+CR_Title <- replicate(NCR, lorem::ipsum_words(TW))
+CR_Comments <- ipsum(NCR,avg_words_per_sentence = PW)
+# pick a random RFC GUID to associate with
+# Randomly select one of the RFCs for each CR
+CR_RFC_GUID <- sample(RFC$GUID, NCR, replace=TRUE)
+# get the following from the associated RFC 
+rfcguid_index <- match(CR_RFC_GUID,RFC$GUID)
+
+CR_CCMD <- CCMD[rfcguid_index]
+CR_CCMD_Component <- CCMD_Component[rfcguid_index]
+CR_Type <- sample(CR_List, NCR, replace = TRUE) 
+CR_Target <- MIDB_ID[rfcguid_index]
+CR_Timeline <- RFC_Timeline[rfcguid_index] # ROUTINE, IMMEDIATE
+CR_Begin <- RFC_Begin[rfcguid_index]  + days(as.integer( runif(NCR,10,40)))
+# CR_End <- RFC_End[rfcguid_index] 
+CR_End <- CR_Begin + days(as.integer( runif(NCR,10,30)))
+
+CR_Comments <- ipsum(NCR,avg_words_per_sentence = PW)
+CR_rand <- ipsum(NCR,avg_words_per_sentence = PW)
+CR_rand <- ipsum(NCR,avg_words_per_sentence = PW)
+CRPOC <- sample.int(N_Users, NCR, replace=TRUE)  # user ID, integer
+CRgroupID <- as.integer(runif(NCR,1,7)) # integer
+
+
+# generate coordinates for the CRs tied to the RFC coords
+#CR_Lon <- RFC_Lon[rfcguid_index] + runif(NCR,-0.1,0.1)
+#CR_Lat <- RFC_Lat[rfcguid_index] + runif(NCR,-0.1,0.1)
+
+CR_Lon <- RFC$lon[rfcguid_index] + runif(NCR,-0.1,0.1)
+CR_Lat <- RFC$lat[rfcguid_index] + runif(NCR,-0.1,0.1)
+
+CR <- data.frame(
+  GUID = CR_GUID,
+  TYPE = "CR",
+  NAME = paste0("CR",seq(1:NCR)),
+  Created_Date_Time = Created_Date_Time,
+  Created_By = Created_By, # user ID, integer
+  LastUpdated_Date_Time = LastUpdated_Date_Time,
+  LastUpdated_By = LastUpdated_By, # user ID, integer
+  Workflow_Status = Workflow_Status,
+  Title = CR_Title,
+  Description = CR_Comments,
+  RFC = CR_RFC_GUID,
+  Combatant_Command = CR_CCMD,
+  Combatant_Command_Component = CR_CCMD_Component,
+  collectType = CR_Type, # AD-HOC, STANDING
+  collectionTimeline = CR_Timeline, # ROUTINE, IMMEDIATE
+  collectionStartDate = CR_Begin,
+  collectionStopDate = CR_End,
+  #collectionLastTimeofValue = RFC_LTV,
+  background = CR_Comments,
+  justification = CR_rand,
+  summary = CR_rand,
+  responsiblePointofContactId = CRPOC, # User ID, integer
+  groupId = CRgroupID, # integer
+  TargetID = CR_Target,
+  lon = CR_Lon,
+  lat = CR_Lat,
+  Priority = RFC$Priority[rfcguid_index],
+  Classification = RFC$Classification[rfcguid_index],
+  Releasability = RFC$Releasability[rfcguid_index]
+)
+
+
+usa <- map_data("world")
+
+ggplot() + 
+  geom_map(data=usa,map=usa, aes(x=long,y=lat,map_id=region), fill="orange",color="black") +
+  geom_point(data=RFC, aes(x=lon,y=lat), color="red", size=4) +
+    geom_point(data=CR, aes(x=lon,y=lat), color="blue", size=1)
+
+
+
+con <- dbConnect(RMariaDB::MariaDB(), dbname="default_1", user="coker", password="coker", host="localhost", group="my-db")
+dbWriteTable(con,"cr",CR,overwrite=TRUE)
+dbDisconnect(con)
+
+```
+
+
+```{r Joins}
+
+rfc_pir <- left_join(RFC, PIR, by = c("PIR" = "GUID"), suffix = c(".rfc", ".pir"))
+
+cr_rfc <- left_join(CR, RFC, by = c("RFC" = "GUID"), suffix = c(".cr", ".rfc"))
+
+ggplot() + 
+  geom_map(data=usa,map=usa, aes(x=long,y=lat,map_id=region), fill="orange",color="black") +
+  geom_point(data=cr_rfc, aes(x=lon.rfc,y=lat.rfc), color="red", size=4) +
+    geom_point(data=cr_rfc, aes(x=lon.cr,y=lat.cr), color="blue", size=1)
+
+cr_rfc_pir <- left_join(cr_rfc, PIR, by =c("PIR" = "GUID"))
+
+#pir_rfc_cr <- right_join(cr_rfc, PIR, by = c("PIR"= "GUID"))
+#cr_rfc_pir <- right_join(cr_rfc, PIR, by = c("PIR"= "GUID"))
+
+#dd <- left_join(cr_rfc, PIR, by =c("PIR" = "GUID"))
+#sort(unique(dd$NAME))
+
+con <- dbConnect(RMariaDB::MariaDB(), dbname="default_1", user="coker", password="coker", host="localhost", group="my-db")
+dbWriteTable(con,"rfcpir",rfc_pir,overwrite=TRUE)
+dbWriteTable(con,"crrfcpir",cr_rfc_pir,overwrite=TRUE)
+dbDisconnect(con)
+
+
+```
+
+
+```{r Gannt View}
+# https://ggplot2-book.org/index.html
+
+my_theme <- theme_stata() + 
+  theme(legend.position="none",
+        strip.background = element_rect(color="black",fill="steelblue3"),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank() ) # theme_economist()
+
+
+# Show RFCs for a few PIRs 
+g1 <- rfc_pir %>% arrange(PIR) %>% 
+    mutate(MidPoint = collectionStartDate +       int_length(interval(collectionStartDate,collectionStopDate))/2 ) %>%
+  slice_head(n=20) %>% 
+  ggplot(aes(y=NAME.rfc)) + 
+  geom_segment(aes(x=collectionStartDate,
+                   xend=collectionStopDate,
+                   y=NAME.rfc,
+                   yend=NAME.rfc,
+                   color=NAME.pir, size=1.5))  +
+    geom_label( aes( label=str_wrap(NAME.rfc, 12), 
+                 x=MidPoint ), 
+                 size=3.5) +
+  facet_grid(NAME.pir ~ ., scales="free", space="free") + theme_stata() +
+   theme(legend.position="none",
+        strip.background = element_rect(color="black",fill="steelblue3"),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank() ) # theme_economist()
+g1
+
+# make interactive version
+library(ggiraph)
+g2 <- rfc_pir %>% arrange(PIR) %>% 
+    mutate(MidPoint = collectionStartDate +       int_length(interval(collectionStartDate,collectionStopDate))/2 ) %>%
+  slice_head(n=20) %>% 
+  ggplot(aes(y=NAME.rfc)) + 
+  geom_segment_interactive(aes(x=collectionStartDate,
+                   xend=collectionStopDate,
+                   y=NAME.rfc,
+                   yend=NAME.rfc,
+                   color=NAME.pir, size=1.5,
+                   tooltip=GUID ))  +
+    geom_label_interactive( aes( label=str_wrap(NAME.rfc, 12), 
+                 x=MidPoint ), 
+                 size=3.5) +
+  facet_grid(NAME.pir ~ ., scales="free", space="free") + theme_stata() +
+   theme(legend.position="none",
+        strip.background = element_rect(color="black",fill="steelblue3"),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank() ) # theme_economist()
+ggiraph(ggobj=g2)
+
+
+rfc_pir %>% arrange(PIR) %>% 
+  slice_head(n=10) %>% 
+  ggplot(aes(y=GUID)) + 
+  geom_segment(aes(x=collectionStartDate,xend=collectionStopDate,
+                   y=GUID,yend=GUID))
+
+
+
+# show the CRs mapped to a RFC for a given PIR
+PIR_OI <- PIR$GUID[4]
+cr_rfc_pir %>% dplyr::filter(PIR == PIR_OI) %>%
+  arrange(GUID) %>%
+  ggplot(aes(y=GUID)) +
+  geom_segment(aes(x=collectionStartDate.cr, 
+                   xend=collectionStopDate.cr, 
+                   y=GUID, yend=GUID)) + 
+  facet_grid(RFC ~ ., scales="free")
+
+cr_rfc_pir %>% dplyr::filter(PIR == PIR_OI) %>%
+  arrange(GUID) %>%
+  ggplot(aes(y=GUID)) +
+  geom_segment(aes(x=collectionStartDate.cr, 
+                   xend=collectionStopDate.cr, 
+                   y=GUID, yend=GUID)) + 
+  facet_wrap(~RFC, scales="free", ncol=1)
+
+# Given a PIR, display CRs aligned with an RFC
+cr_rfc_pir %>% dplyr::filter(PIR == PIR_OI) %>%
+  mutate(MidPoint = collectionStartDate.cr +       int_length(interval(collectionStartDate.cr,collectionStopDate.cr))/2 ) %>% # select(MidPoint)
+  arrange(GUID) %>%
+  ggplot(aes(y=NAME.cr)) +
+  geom_segment(aes(x=collectionStartDate.cr, 
+                   xend=collectionStopDate.cr, 
+                   y=NAME.cr, 
+                   yend=NAME.cr,
+                   size=1.5, 
+                   color=NAME.rfc,
+                   alpha=Workflow_Status.cr), 
+                   lineend="round") + 
+  geom_label( aes( label=str_wrap(NAME.cr, 12), 
+                 x=MidPoint ), 
+                 size=3.5) +
+  facet_wrap(~NAME.rfc , scales="free_y", ncol=1) + my_theme
+
+
+cr_rfc_pir %>% dplyr::filter(PIR == PIR_OI) %>%
+  arrange(GUID) %>%
+  ggplot(aes(y=GUID)) +
+  geom_segment(aes(x=collectionStartDate.cr, 
+                   xend=collectionStopDate.cr, 
+                   y=GUID, yend=GUID)) + 
+  geom_segment(aes(x=collectionStartDate.rfc, 
+                   xend=collectionStopDate.rfc, 
+                   y=GUID, yend=GUID)) + 
+  facet_grid(RFC ~ ., scales="free")
+
+# arrange(PIR) %>% 
+#   slice_head(n=10) %>% 
+#   ggplot(aes(y=GUID)) + 
+#   geom_segment(aes(x=collectionStartDate,xend=collectionStopDate,y=GUID,yend=GUID))  +
+#   facet_grid(PIR ~ ., scales="free")
+
+```
+
+

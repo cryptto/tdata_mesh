@@ -1,0 +1,8 @@
+  mysql:
+    build: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 'mysql'
+      MYSQL_USER: 'presto'
+      MYSQL_PASSWORD: 'mysql'
+    ports:
+      - "3306:3306"

@@ -1,0 +1,61 @@
+version: '3'
+services:
+  presto:
+    build: presto
+    links:
+      - hive
+      #- mysql
+    depends_on:
+      - hive
+      #- mysql
+    ports:
+      - "8080:8080"
+
+  hive:
+   build: hive
+   links:
+     #- mysql
+     - minio
+   depends_on:
+     - mysql
+     - minio
+   #volumes:
+    # - './hive/hive-site.xml:/opt/hive/conf/hive-site.xml'
+   ports:
+     - "9083:9083"
+    
+  #mysql:
+  #  build: mysql
+  #  environment:
+  #    MYSQL_ROOT_PASSWORD: 'mysql'
+  #    MYSQL_USER: 'presto'
+  #    MYSQL_PASSWORD: 'mysql'
+  #  ports:
+  #    - "3306:3306"
+
+
+  jupyter:
+    build: jupyter
+    links:
+      - hive
+      - mysql
+    ports: 
+      - "8888:8888"
+    depends_on:
+      - presto
+    command: start-notebook.sh --NotebookApp.password='sha1:2017f6d8a65d:4f2115202d4cd8c081f1c135bc2b41292bcb4ec4'
+
+
+  minio:
+    hostname: minio
+    image: minio/minio
+    container_name: minio
+    ports:
+      - '9000:9000'
+    volumes:
+      - './minio/data/:/data'
+      - './minio/config:/root/.minio'
+    environment:
+      MINIO_ACCESS_KEY: V42FCGRVMK24JJ8DHUYG
+      MINIO_SECRET_KEY: bKhWxVF3kQoLY9kFmt91l+tDrEoZjqnWXzY9Eza
+    command: server /data

@@ -1,0 +1,13 @@
+name: CollectLeaf
+title: CollectLeaf
+username:
+account: gakoi
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 5493702
+bundleId: 5529142
+url: https://gakoi.shinyapps.io/CollectLeaf/
+when: 1643688667.44787
+lastSyncTime: 1643688667.44787
+asMultiple: FALSE
+asStatic: FALSE

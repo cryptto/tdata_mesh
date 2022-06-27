@@ -1,0 +1,58 @@
+
+<configuration>
+    <property>
+       <name>javax.jdo.option.ConnectionURL</name>
+       <value>jdbc:mysql://mysql:3306/hive_metastore?allowPublicKeyRetrieval=true&amp;createDatabaseIfNotExist=true&amp;autoReconnect=true&amp;useSSL=false</value>
+       <description>metadata is stored in a MySQL server</description>
+    </property>
+    <property>
+        <name>hive.metastore.schema.verification</name>
+        <value>false</value>
+        <description>enforce metastore schema version consistency</description>
+    </property>
+    <property>
+       <name>javax.jdo.option.ConnectionDriverName</name>
+       <value>com.mysql.jdbc.Driver</value>
+       <description>MySQL JDBC driver class</description>
+    </property>
+    <property>
+       <name>javax.jdo.option.ConnectionUserName</name>
+       <value>root</value>
+       <description>user name for connecting to mysql server</description>
+    </property>
+    <property>
+       <name>javax.jdo.option.ConnectionPassword</name>
+       <value>mysql</value>
+       <description>password for connecting to mysql server</description>
+    </property>
+    <property>
+      <name>datanucleus.schema.autoCreateAll</name>
+      <value>true</value>
+      <description>type of data store</description>
+    </property>
+<!--    <property>-->
+<!--      <name>hive.metastore.warehouse.dir</name>-->
+<!--      <value>/shared_data/hive/warehouse</value>-->
+<!--      <description>location of default database for the warehouse</description>-->
+<!--    </property>-->
+    <property>
+    <name>fs.s3a.access.key</name>
+    <value>V42FCGRVMK24JJ8DHUYG</value>
+</property>
+<property>
+    <name>fs.s3a.secret.key</name>
+    <value>bKhWxVF3kQoLY9kFmt91l+tDrEoZjqnWXzY9Eza</value>
+</property>
+<property>
+    <name>fs.s3a.connection.ssl.enabled</name>
+    <value>false</value>
+</property>
+<property>
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>
+</property>
+<property>
+    <name>fs.s3a.endpoint</name>
+    <value>http://minio:9000</value>
+</property>
+ </configuration>

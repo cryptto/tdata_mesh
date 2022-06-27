@@ -1,0 +1,310 @@
+---
+title: "IMM Analysis"
+output: html_notebook
+---
+
+
+Various analysis approaches to the IMM synthesized data.
+
+
+```{r Define Environment, include=FALSE}
+library(DBI)
+library(RMariaDB)
+library(tidyverse)
+library(dbplyr)
+# install.package("devtools")
+# devtools::install_github("gadenbuie/lorem")
+library(lorem)
+library(uuid)
+library (lubridate)
+
+library(ggplot2)
+library(ggthemes)
+library(maps)
+library(stringi) # used to generate BE#'s
+library(ggiraph)
+library(patchwork)
+
+```
+
+
+```{r Connect to Data, echo=TRUE}
+con <- dbConnect(RMariaDB::MariaDB(), dbname="default_1", user="coker", password="coker", host="localhost", group="my-db")
+
+# get list of available tables
+tlist <- dbListTables(con)
+# get list of fields in each of these tables
+flist <- dbListFields(con,"pir")
+# execute sample query to return a single record
+rs_string <- paste0("SELECT * FROM ",tlist[3]," LIMIT 1")
+rs <- dbSendQuery(con, "SELECT * FROM pir LIMIT 1")
+rs <- dbSendQuery(con,rs_string)
+# get information about fields and type for each column
+filist <- dbColumnInfo(rs)
+pir3 <- tbl(con,"pir") %>% collect() %>% select(flist[1:2])
+# retrieve pir table
+pir2 <- tbl(con,"pir") %>% collect()
+rfc_pir2 <- tbl(con,"rfcpir") %>% collect()
+cr_rfc_pir2 <- tbl(con,"crrfcpir") %>% collect()
+# disconnect from DataBase
+dbDisconnect(con)
+
+# write to data directory
+#write.csv(cr_rfc_pir2,file="Web_App/app2/data/combo.csv",
+          #append=FALSE)
+#saveRDS(cr_rfc_pir2,
+#        file="Web_App/app2/data/combo.rds",
+#        compress=FALSE)
+
+```
+
+
+```{r}
+
+my_theme <- theme_stata() +
+   theme(legend.position="none",
+        strip.background = element_rect(color="black",fill="steelblue3"),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank() ) # theme_economist()
+
+
+g1 <- rfc_pir2 %>%  
+  mutate(MidPoint = collectionStartDate +
+          int_length(interval(collectionStartDate,collectionStopDate))/2 ) %>%
+  slice_head(n=20) %>% 
+  ggplot(aes(y=NAME.rfc)) + 
+  geom_segment(aes(x=collectionStartDate,
+                   xend=collectionStopDate,
+                   y=NAME.rfc,
+                   yend=NAME.rfc,
+                   color=NAME.pir, size=1.5))  +
+    geom_label( aes( label=str_wrap(NAME.rfc, 12), 
+                 x=MidPoint ), 
+                 size=3.5) +
+  facet_grid(NAME.pir ~ ., scales="free", space="free") + 
+  my_theme
+g1
+
+```
+
+```{r}
+
+
+# show the CRs mapped to a RFC for a given PIR
+
+PIR_OI <- pir2$GUID[4]
+g1 <- cr_rfc_pir2 %>% filter(PIR == PIR_OI) %>%
+  arrange(GUID) %>%
+  ggplot(aes(y=GUID)) +
+  geom_segment(aes(x=collectionStartDate.cr, 
+                   xend=collectionStopDate.cr, 
+                   y=GUID, yend=GUID)) + 
+  facet_grid(RFC ~ ., scales="free") +
+  my_theme
+
+
+g2 <- cr_rfc_pir2 %>% filter(PIR == PIR_OI) %>%
+  mutate(MidPoint = collectionStartDate.cr +            int_length(interval(collectionStartDate.cr,collectionStopDate.cr))/2 ) %>% # select(MidPoint)
+  arrange(GUID)
+
+g2 %>%  ggplot(aes(y=NAME.cr)) +
+  geom_segment(aes(x=collectionStartDate.cr, 
+                   xend=collectionStopDate.cr, 
+                   y=NAME.cr, 
+                   yend=NAME.cr,
+                   size=1.5, 
+                   color=NAME.rfc,
+                   alpha=Workflow_Status.cr), 
+                   lineend="round") + 
+  geom_label( aes( label=str_wrap(NAME.cr, 12), 
+                 x=MidPoint ), 
+                 size=3.5) +
+  facet_wrap(~NAME.rfc , scales="free_y", ncol=1) + my_theme
+
+
+```
+
+```{r}
+g2 <- cr_rfc_pir2 %>% filter(PIR == PIR_OI) %>%
+  mutate(Combatant_Command.rfc = as.factor(Combatant_Command.rfc)) %>%
+  mutate(Priority.rfc = as.factor(Priority.rfc)) %>%
+  mutate(Combatant_Command.cr = as.factor(Combatant_Command.cr)) %>%
+  mutate(Priority.cr = as.factor(Priority.cr)) %>%
+  mutate(requestType = as.factor(requestType)) %>% 
+  mutate(Workflow_Status.rfc = as.factor(Workflow_Status.rfc)) %>%
+  mutate(Workflow_Status.cr = as.factor(Workflow_Status.cr))
+  
+p1 <- g2 %>% ggplot() + geom_bar(aes(x=Priority.cr, fill=Priority.cr))
+  
+p2 <- g2 %>% ggplot() + geom_bar(aes(x=Combatant_Command.cr)) 
+
+p3 <- g2 %>% ggplot() + geom_bar(aes(x=Workflow_Status.cr, fill=Workflow_Status.cr))
+
+p4 <- g2 %>% ggplot() + geom_bar(aes(x=requestType, fill=requestType))
+
+p1 + p2 + p3 + p3
+
+p1 | p2 | p3/p4
+  
+#g2 <- p1 | p2 | p3/p4
+
+p3 / (p1 | p4)
+```
+```{r}
+
+        usa <- map_data("world")
+        m2 <- cr_rfc_pir2 %>% filter(NAME=="PIR14")
+m2$CCMD
+        ggplot() + 
+            geom_map(data=usa,map=usa, aes(x=long,y=lat,map_id=region), fill="orange",color="black") +
+            geom_point(data=m2, aes(x=lon.rfc,y=lat.rfc), color="red", size=4) +
+            geom_point(data=m2, aes(x=lon.cr,y=lat.cr), color="blue", size=1)
+        
+        m2$lon.rfc
+        m2$lat.rfc
+        m2$lon.cr
+        m2$lat.cr
+        
+```
+
+Create Fancy Tables
+
+```{r eval=FALSE, include=FALSE}
+library(gt)
+
+# remotes::install_github("jthomasmock/gtExtras")
+library(gtExtras)
+
+m2 <- cr_rfc_pir2 %>% filter(NAME=="PIR14") %>%
+  group_by(NAME.rfc) %>%
+  mutate(collectType=as.factor(collectType)) %>%
+  select(NAME.rfc,NAME.cr,collectType)
+
+m2 %>% gt() %>% 
+#  data_color( columns=(vars(collectType))
+#             ) %>% 
+  gt_highlight_cols(collectType) %>%
+  gt_theme_nytimes()
+
+m2 %>% gt() %>% 
+#  data_color( columns=(vars(collectType))
+#             ) %>% 
+  gt_color_rows(collectType, type="discrete") %>%
+  gt_theme_nytimes()
+
+```
+
+
+
+
+
+Create Graph Nodes
+```{r Graph Data}
+library(igraph)
+library(ggraph)
+
+# Generate Vertices
+
+vertex_pir <- cr_rfc_pir2 %>% 
+  select(NAME, GUID=PIR, CCMD, Classification, Releasability) %>%
+  mutate(Priority = as.integer(""), Approval = "", TYPE="PIR", 
+         COLOR="gold", CNAME=NAME, PNAME=NAME, shape="circle") %>% 
+  distinct()
+vertex_rfc <- cr_rfc_pir2 %>% 
+  select(NAME=NAME.rfc, GUID=RFC, CCMD, Classification, Releasability, 
+         Priority=Priority.rfc, 
+         Approval=Workflow_Status.rfc,
+         PNAME=NAME) %>% 
+    mutate(Priority = as.integer(Priority), TYPE="RFC", 
+           COLOR="tomato", CNAME=NAME, shape="square") %>%
+  distinct()
+vertex_cr  <- cr_rfc_pir2 %>% 
+  select(NAME=NAME.cr, GUID, CCMD, Classification, Releasability, 
+         Priority=Priority.cr, 
+         Approval = Workflow_Status.cr,
+         PNAME=NAME) %>% 
+  mutate(Priority = as.integer(Priority), TYPE="CR", 
+         COLOR="gray50",CNAME=NAME, shape="square") %>%
+  distinct()
+
+#vertex <- inner_join(vertex_pir, vertex_rfc) 
+
+vertex <- rbind(vertex_pir, vertex_rfc, vertex_cr)
+
+# Generate Edges
+edges_rfc_pir <- cr_rfc_pir2 %>% 
+  select(G1=NAME, G2=NAME.rfc, GUID1=PIR, GUID2=RFC) %>% 
+  mutate(TYPE1="PIR", TYPE2="RFC", TYPE="RQMT", color="blue", lty="dashed") %>% distinct()
+ # mutate(G1=GUID, G2= PIR,TYPE1="PIR", TYPE2="RFC")
+edges_cr_rfc <- cr_rfc_pir2 %>% 
+  select(G1=NAME.cr,G2=NAME.rfc, GUID1=GUID, GUID2=RFC) %>% 
+  mutate(TYPE1="CR",TYPE2="RFC", TYPE="COLLECT", color="red", lty="dotted") %>% distinct()
+edges <- rbind(edges_rfc_pir,edges_cr_rfc)
+
+net <- graph_from_data_frame(d=edges, vertices=vertex, direct="TRUE")
+net <- delete.vertices(net,degree(net)<1) # remove stand alone nodes
+
+V(net)$label <- V(net)$CNAME
+V(net)$color <- V(net)$COLOR
+V(net)$type  <- V(net)$TYPE
+V(net)$parent <- V(net)$PNAME
+#V(net)$shape <- c("square", "circle", "triangle")[V(net)$type+1]
+
+```
+
+```{r Graph Analysis}
+# Useful Book: https://ona-book.org/viz-graphs.html
+# https://peopleanalytics-regression-book.org/index.html
+# trim the data down to a smaller set
+net2 <- delete.vertices(net,V(net)$CCMD!= "CENTCOM")
+#net2 <- delete.vertices(net(V(net)$))
+net2 <- delete.vertices(net,V(net)$parent!="PIR14")
+
+# example on how to combine a view for 2 PIRs
+net3<-induced.subgraph(net, vids=c("PIR14","PIR55"))
+net3<-induced.subgraph(net, vids=V(net)[parent==c("PIR14","PIR55")])
+
+#
+#plot(net2)
+plot(net2, vertex.size=6, edge.arrow.size=0, edge.width=2,
+     vertex.label.cex=2, vertex.label.color="orange", edge.curved=0.2,
+     layout=layout_with_fr)
+
+
+plot(net3, vertex.size=6, edge.arrow.size=0, edge.width=2,
+     vertex.label.cex=2, vertex.label.color="orange", edge.curved=0.2,
+     layout=layout_with_fr)
+
+# try out some ggplot/ggraph options
+#ggraph(net3) + geom_edge_arc()
+ggraph(net2, layout="fr") + 
+  geom_edge_link(aes(color=TYPE)) + 
+  geom_node_point(aes(color=type, size=5)) +
+  geom_node_text(aes(label=label), repel=TRUE)
+
+ggraph(net3, layout="fr") + 
+  geom_edge_link(aes(color=TYPE)) + 
+  geom_node_point(aes(color=type, size=5)) +
+  geom_node_text(aes(label=label), repel=TRUE)
+# ggraph(net2) + geom_edge_arc() + geom_node_circle()
+# ggraph(net2) + geom_edge_arc(aes(color=TYPE1))
+#ggraph(net2, layout="dendogram") + geom_edge_elbow()
+
+
+```
+
+Leaflet Maps
+
+```{r Leaflet Map}
+library(leaflet)
+m2<-cr_rfc_pir2
+m <- leaflet() %>%
+  addTiles() %>%
+  addMarkers(clusterOptions=TRUE,
+             lng=m2$lon.cr, 
+             lat=m2$lat.cr,
+             popup=paste0(m2$NAME,"<br>",m2$NAME.rfc,"<br>",m2$NAME.cr) )
+
+m
+```
+
